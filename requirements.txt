@@ -1,0 +1,8 @@
+anthropic
+sentence-transformers
+rank-bm25
+streamlit
+pandas
+numpy
+pytest
+python-dotenv

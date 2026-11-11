@@ -1,0 +1,16 @@
+id,claim,label,error_type
+1,Revenue was Rs 1250 crore up 25%,correct,
+2,Net profit was Rs 130 crore,error,wrong_number
+3,4200 employees,correct,
+4,85 stores in 15 states,error,wrong_number
+5,Rs 50 crore borrowings repaid,correct,
+6,Apex Mart is 8% of revenue,correct,
+7,Auditor issued a qualified opinion,error,contradicted
+8,Dividend approved on 15 June 2025,error,wrong_date
+9,Breach 12000 records reported within 72 hours,correct,
+10,Complies with Companies Act 2013 and Ind AS,correct,
+11,Rs 90 crore capex Hyderabad warehouse automation,correct,
+12,SwiftLogix 3 years at Rs 12 crore per year,correct,
+13,Termination needs 60 days notice,error,wrong_number
+14,Circular CYB/2024/17 requires disclosure within 24 hours,error,fabricated_citation
+15,FY2026 revenue expected Rs 1600 crore,error,unsupported
