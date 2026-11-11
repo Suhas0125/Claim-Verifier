@@ -2,7 +2,7 @@
 import numpy as np
 from sentence_transformers import CrossEncoder
 from src.retrieve import Retriever
-from src.rules import check as rule_check
+from src.rules import check as rule_check, polarity_check
 
 NLI_MODEL = "cross-encoder/nli-deberta-v3-small"
 # output order of this model: contradiction, entailment, neutral
@@ -23,28 +23,36 @@ class Verifier:
 
     def verify(self, claim: str) -> dict:
         evidence = self.retriever.search(claim, k=self.k, mode=self.mode)
-        pairs = [(e["text"], claim) for e in evidence]
-        probs = softmax(np.array(self.nli.predict(pairs)))
+        texts = [e["text"] for e in evidence]
+        probs = softmax(np.array(self.nli.predict([(t, claim) for t in texts])))
+        joined = softmax(np.array(self.nli.predict([(" ".join(texts), claim)])))[0]
         con, ent = probs[:, 0], probs[:, 1]
         best = int(np.argmax(ent))
+        ent_score = max(float(ent.max()), float(joined[1]))
+        con_score = float(con[0])  # only the top-ranked sentence may contradict
 
-        rules = rule_check(claim, [e["text"] for e in evidence]) if self.use_rules \
-            else {"status": "n/a", "reason": "rules disabled"}
+        if self.use_rules:
+            rules = rule_check(claim, texts)
+            pol = polarity_check(claim, texts[0])
+        else:
+            rules = {"status": "n/a", "reason": "rules disabled"}
+            pol = {"status": "pass", "reason": ""}
 
         if rules["status"] == "fail":
             status, reason = "Contradicted", "Rule check: " + rules["reason"]
-        elif con.max() >= self.con_th:
-            status, reason = "Contradicted", f"NLI contradiction {con.max():.2f}"
-        elif ent.max() >= self.ent_th:
-            status, reason = "Supported", f"NLI entailment {ent.max():.2f}"
+        elif pol["status"] == "fail":
+            status, reason = "Contradicted", "Polarity check: " + pol["reason"]
+        elif ent_score >= self.ent_th:
+            status, reason = "Supported", f"NLI entailment {ent_score:.2f}"
+        elif con_score >= self.con_th:
+            status, reason = "Contradicted", f"NLI contradiction {con_score:.2f}"
         else:
             status, reason = "Unsupported", "No source sentence supports this claim"
 
         return {
             "claim": claim, "status": status, "reason": reason,
-            "confidence": float(max(ent.max(), con.max())),
-            "evidence": evidence[best]["text"],
-            "source": evidence[best]["source"],
+            "confidence": max(ent_score, con_score),
+            "evidence": texts[best], "source": evidence[best]["source"],
         }
 
 
@@ -63,8 +71,10 @@ if __name__ == "__main__":
         r = v.verify(c["text"])
         flagged = r["status"] != "Supported"
         truth = row["label"] == "error"
-        tp += flagged and truth; fp += flagged and not truth
-        fn += (not flagged) and truth; tn += (not flagged) and not truth
+        tp += flagged and truth
+        fp += flagged and not truth
+        fn += (not flagged) and truth
+        tn += (not flagged) and not truth
         mark = "OK " if flagged == truth else "XX "
         print(f"{mark}#{c['id']:>2} {r['status']:<12} {r['reason'][:70]}")
 

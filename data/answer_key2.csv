@@ -1,0 +1,18 @@
+id,claim,label,error_type
+1,Revenue grew 25%,correct,
+2,4500 employees,error,wrong_number
+3,85 stores 12 states,correct,
+4,Borrowings Rs 300 crore,correct,
+5,Apex Mart 18%,error,wrong_number
+6,Auditor report signed 28 May 2025,correct,
+7,Dividend Rs 4,correct,
+8,Breach reported after 72 hours,error,contradicted
+9,Breach 12000 records,correct,
+10,Non-compliant with Companies Act,error,contradicted
+11,Capex Rs 90 crore,correct,
+12,Fee Rs 12 crore,correct,
+13,Termination 90 days,correct,
+14,Contract 5 years,error,wrong_number
+15,Penalty with no cap,error,contradicted
+16,International expansion,error,unsupported
+17,Net profit Rs 110 crore,correct,

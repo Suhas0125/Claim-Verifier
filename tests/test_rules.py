@@ -1,4 +1,5 @@
 from src.rules import check
+from src.rules import polarity_check
 
 EV = ["Net profit for FY2025 was Rs 110 crore.",
       "The board approved a dividend of Rs 4 per share on 15 May 2025."]
@@ -26,3 +27,8 @@ def test_no_numbers_is_na():
 
 def test_comma_numbers_normalized():
     assert check("Revenue was Rs 1,250 crore", ["Revenue of Rs 1250 crore"])["status"] == "pass"
+
+def test_polarity_flags_opposite():
+    r = polarity_check("The auditor issued a qualified opinion",
+                       "The auditor's report carried an unqualified opinion.")
+    assert r["status"] == "fail"

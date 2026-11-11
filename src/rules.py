@@ -34,3 +34,18 @@ def check(claim: str, evidence_texts: list[str]) -> dict:
             parts.append("numbers not in evidence: " + ", ".join(sorted(bad_nums)))
         return {"status": "fail", "reason": "; ".join(parts)}
     return {"status": "pass", "reason": "all numbers and dates found in evidence"}
+
+POLARITY = [("qualified", "unqualified"), ("increase", "decrease"),
+            ("increased", "decreased"), ("approved", "rejected"),
+            ("profit", "loss"), ("complies", "violates")]
+
+
+def polarity_check(claim: str, evidence: str) -> dict:
+    """Flag claims that use the opposite word of a pair found in the evidence."""
+    c = set(re.findall(r"[a-z]+", claim.lower()))
+    e = set(re.findall(r"[a-z]+", evidence.lower()))
+    for a, b in POLARITY:
+        for x, y in ((a, b), (b, a)):
+            if x in c and y in e and x not in e:
+                return {"status": "fail", "reason": f"claim says '{x}', evidence says '{y}'"}
+    return {"status": "pass", "reason": ""}
