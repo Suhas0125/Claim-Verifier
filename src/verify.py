@@ -1,0 +1,73 @@
+"""Verify each claim: retrieval -> NLI model -> rule checks -> verdict."""
+import numpy as np
+from sentence_transformers import CrossEncoder
+from src.retrieve import Retriever
+from src.rules import check as rule_check
+
+NLI_MODEL = "cross-encoder/nli-deberta-v3-small"
+# output order of this model: contradiction, entailment, neutral
+
+
+def softmax(x: np.ndarray) -> np.ndarray:
+    e = np.exp(x - x.max(axis=1, keepdims=True))
+    return e / e.sum(axis=1, keepdims=True)
+
+
+class Verifier:
+    def __init__(self, chunks, mode="hybrid", use_rules=True, k=3,
+                 ent_th=0.5, con_th=0.5):
+        self.retriever = Retriever(chunks)
+        self.nli = CrossEncoder(NLI_MODEL)
+        self.mode, self.use_rules, self.k = mode, use_rules, k
+        self.ent_th, self.con_th = ent_th, con_th
+
+    def verify(self, claim: str) -> dict:
+        evidence = self.retriever.search(claim, k=self.k, mode=self.mode)
+        pairs = [(e["text"], claim) for e in evidence]
+        probs = softmax(np.array(self.nli.predict(pairs)))
+        con, ent = probs[:, 0], probs[:, 1]
+        best = int(np.argmax(ent))
+
+        rules = rule_check(claim, [e["text"] for e in evidence]) if self.use_rules \
+            else {"status": "n/a", "reason": "rules disabled"}
+
+        if rules["status"] == "fail":
+            status, reason = "Contradicted", "Rule check: " + rules["reason"]
+        elif con.max() >= self.con_th:
+            status, reason = "Contradicted", f"NLI contradiction {con.max():.2f}"
+        elif ent.max() >= self.ent_th:
+            status, reason = "Supported", f"NLI entailment {ent.max():.2f}"
+        else:
+            status, reason = "Unsupported", "No source sentence supports this claim"
+
+        return {
+            "claim": claim, "status": status, "reason": reason,
+            "confidence": float(max(ent.max(), con.max())),
+            "evidence": evidence[best]["text"],
+            "source": evidence[best]["source"],
+        }
+
+
+if __name__ == "__main__":
+    import pandas as pd
+    from pathlib import Path
+    from src.ingest import load_chunks
+    from src.extract import extract_claims
+
+    v = Verifier(load_chunks())
+    claims = extract_claims(Path("data/draft_memo.txt").read_text(encoding="utf-8"))
+    key = pd.read_csv("data/answer_key.csv")
+
+    tp = fp = fn = tn = 0
+    for c, (_, row) in zip(claims, key.iterrows()):
+        r = v.verify(c["text"])
+        flagged = r["status"] != "Supported"
+        truth = row["label"] == "error"
+        tp += flagged and truth; fp += flagged and not truth
+        fn += (not flagged) and truth; tn += (not flagged) and not truth
+        mark = "OK " if flagged == truth else "XX "
+        print(f"{mark}#{c['id']:>2} {r['status']:<12} {r['reason'][:70]}")
+
+    prec = tp / (tp + fp) if tp + fp else 0
+    rec = tp / (tp + fn) if tp + fn else 0
+    print(f"\nTP={tp} FP={fp} FN={fn} TN={tn}  precision={prec:.2f} recall={rec:.2f}")
