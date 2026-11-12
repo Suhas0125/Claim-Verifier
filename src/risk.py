@@ -2,7 +2,7 @@
 import re
 
 SENSITIVE = ("regulator", "circular", "act ", "complian", "penalty", "audit",
-             "opinion", "breach", "dividend", "borrowing", "terminat", "liabil")
+             "opinion", "breach", "dividend", "borrowing", "terminate", "liability", "complaint")
 
 
 def materiality(claim: str) -> float:
