@@ -1,0 +1,7 @@
+dataset,reviewed,total_errors,found_ranked,found_doc_order,found_random
+dev,3,7,3,1,1.4
+dev,5,7,5,2,2.3
+dev,7,7,7,3,3.2
+held-out,3,7,3,1,1.2
+held-out,5,7,5,2,2.0
+held-out,7,7,6,2,2.8

@@ -11,29 +11,39 @@ def extract_dates(text: str) -> set[tuple]:
     return {(int(d), m.lower(), int(y)) for d, m, y in DATE_RE.findall(text)}
 
 
-def extract_numbers(text: str) -> set[str]:
-    text = DATE_RE.sub(" ", text)  # dates are checked separately
-    return {n.replace(",", "").rstrip(".") for n in NUM_RE.findall(text) if n.strip(",")}
+def _floats(text: str) -> set[float]:
+    text = DATE_RE.sub(" ", text)
+    out = set()
+    for n in NUM_RE.findall(text):
+        try:
+            out.add(float(n.replace(",", "").rstrip(".")))
+        except ValueError:
+            pass
+    return out
 
 
 def check(claim: str, evidence_texts: list[str]) -> dict:
-    """Return {'status': 'pass' | 'fail' | 'n/a', 'reason': str}."""
+    """Numbers/dates in the claim must appear anywhere in the evidence texts."""
     evidence = " ".join(evidence_texts)
-    c_dates, c_nums = extract_dates(claim), extract_numbers(claim)
+    c_dates, c_nums = extract_dates(claim), _floats(claim)
     if not c_dates and not c_nums:
         return {"status": "n/a", "reason": "no numbers or dates in claim"}
 
+    e_nums = _floats(evidence)
+    e_nums |= {x / 1000 for x in e_nums} | {x * 1000 for x in e_nums}  # millions vs billions
     bad_dates = c_dates - extract_dates(evidence)
-    bad_nums = c_nums - extract_numbers(evidence)
+    bad_nums = {n for n in c_nums if not any(abs(n - e) < 1e-9 for e in e_nums)}
     if bad_dates or bad_nums:
         parts = []
         if bad_dates:
             parts.append("dates not in evidence: " +
                          ", ".join(f"{d} {m.title()} {y}" for d, m, y in sorted(bad_dates)))
         if bad_nums:
-            parts.append("numbers not in evidence: " + ", ".join(sorted(bad_nums)))
+            parts.append("numbers not in evidence: " +
+                         ", ".join(f"{n:g}" for n in sorted(bad_nums)))
         return {"status": "fail", "reason": "; ".join(parts)}
     return {"status": "pass", "reason": "all numbers and dates found in evidence"}
+
 
 POLARITY = [("qualified", "unqualified"), ("increase", "decrease"),
             ("increased", "decreased"), ("approved", "rejected"),

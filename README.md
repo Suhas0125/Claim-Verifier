@@ -22,7 +22,7 @@ Everything runs locally: no API keys and no client data leaving the machine.
 | dev | dense only | 1.00 | 0.86 | 0.92 |
 | dev | hybrid | 1.00 | 0.86 | 0.92 |
 | dev | hybrid + rules | 1.00 | 1.00 | 1.00 |
-| held-out | dense only | 0.78 | 1.00 | 0.88 |
+| held-out | dense only | 0.88 | 1.00 | 0.93 |
 | held-out | hybrid | 0.88 | 1.00 | 0.93 |
 | held-out | hybrid + rules | 0.88 | 1.00 | 0.93 |
 

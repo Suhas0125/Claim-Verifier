@@ -3,3 +3,4 @@ __pycache__/
 .env
 *.db
 setup_project.py
+llm_cache.json

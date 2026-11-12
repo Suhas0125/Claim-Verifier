@@ -15,11 +15,13 @@ def softmax(x: np.ndarray) -> np.ndarray:
 
 class Verifier:
     def __init__(self, chunks, mode="hybrid", use_rules=True, k=3,
-                 ent_th=0.5, con_th=0.5):
+                 ent_th=0.5, con_th=0.5, use_llm=False):
         self.retriever = Retriever(chunks)
+        self.all_texts = [c["text"] for c in chunks]
         self.nli = CrossEncoder(NLI_MODEL)
         self.mode, self.use_rules, self.k = mode, use_rules, k
         self.ent_th, self.con_th = ent_th, con_th
+        self.use_llm = use_llm
 
     def verify(self, claim: str) -> dict:
         evidence = self.retriever.search(claim, k=self.k, mode=self.mode)
@@ -30,9 +32,10 @@ class Verifier:
         best = int(np.argmax(ent))
         ent_score = max(float(ent.max()), float(joined[1]))
         con_score = float(con[0])  # only the top-ranked sentence may contradict
+        sim = float(self.retriever._dense_scores(claim).max())
 
         if self.use_rules:
-            rules = rule_check(claim, texts)
+            rules = rule_check(claim, self.all_texts)
             pol = polarity_check(claim, texts[0])
         else:
             rules = {"status": "n/a", "reason": "rules disabled"}
@@ -46,9 +49,20 @@ class Verifier:
             status, reason = "Supported", f"NLI entailment {ent_score:.2f}"
         elif con_score >= self.con_th:
             status, reason = "Contradicted", f"NLI contradiction {con_score:.2f}"
+        elif sim >= 0.6:
+            status, reason = "Partial", f"Related source found (similarity {sim:.2f}); reviewer should check"
         else:
             status, reason = "Unsupported", "No source sentence supports this claim"
 
+        if self.use_llm and rules["status"] != "fail" and pol["status"] != "fail":
+            from src.llm_verify import judge
+            ev5 = [e["text"] for e in self.retriever.search(claim, k=5, mode=self.mode)]
+            llm = judge(claim, ev5)
+            if llm:
+                status, reason = llm
+            else:
+                reason += " (Gemini unavailable, NLI verdict kept)"
+        
         return {
             "claim": claim, "status": status, "reason": reason,
             "confidence": max(ent_score, con_score),

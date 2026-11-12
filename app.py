@@ -4,16 +4,17 @@ from src.ingest import load_chunks
 from src.extract import extract_claims
 from src.verify import Verifier, NLI_MODEL
 from src import log
+from src.risk import risk_score
 
 st.set_page_config(page_title="Claim Verifier", layout="wide")
 log.init_db()
 
-ICON = {"Supported": "🟢", "Contradicted": "🔴", "Unsupported": "🟠"}
+ICON = {"Supported": "🟢", "Contradicted": "🔴", "Unsupported": "🟠", "Partial": "🟡"}
 
 
 @st.cache_resource
-def get_verifier():
-    return Verifier(load_chunks())
+def get_verifier(source_dir):
+    return Verifier(load_chunks(source_dir))
 
 
 st.title("Claim Verifier")
@@ -23,15 +24,18 @@ st.caption("Checks every claim in an AI-drafted memo against source documents. "
 # ---- sidebar ----
 with st.sidebar:
     st.header("Settings")
-    sample = st.selectbox("Sample memo", ["Dev memo", "Held-out memo", "Paste my own"])
+    sample = st.selectbox("Sample memo", ["Dev memo", "Held-out memo", "Real document demo", "Paste my own"])
     mode = st.selectbox("Retrieval", ["hybrid", "dense"])
     use_rules = st.checkbox("Rule checks (numbers, dates, polarity)", value=True)
-    st.caption("Sources: data/sources/*.txt")
+
+SRC_DIR = "data/real/sources" if sample == "Real document demo" else "data/sources"
 
 if sample == "Paste my own":
     memo = st.text_area("Draft memo", height=200)
 else:
-    path = "data/draft_memo.txt" if sample == "Dev memo" else "data/draft_memo2.txt"
+    path = {"Dev memo": "data/draft_memo.txt",
+            "Held-out memo": "data/draft_memo2.txt",
+            "Real document demo": "data/real/draft.txt"}[sample]
     memo = Path(path).read_text(encoding="utf-8")
     st.text_area("Draft memo", memo, height=200, disabled=True)
 
@@ -40,28 +44,34 @@ tab_review, tab_log = st.tabs(["Review", "Audit log"])
 # ---- review ----
 with tab_review:
     if st.button("Verify draft", type="primary") and memo.strip():
-        v = get_verifier()
+        v = get_verifier(SRC_DIR)
         v.mode, v.use_rules = mode, use_rules
         claims = extract_claims(memo)
         with st.spinner("Verifying claims..."):
-            st.session_state.results = [v.verify(c["text"]) for c in claims]
+            res = [v.verify(c["text"]) for c in claims]
+            st.session_state.results = [{**r, "risk": risk_score(r)} for r in res]
         st.session_state.decided = {}
 
-    results = st.session_state.get("results")
+    results = st.session_state.get("results") or []
     if results:
         flagged = sum(r["status"] != "Supported" for r in results)
         c1, c2, c3 = st.columns(3)
         c1.metric("Claims", len(results))
         c2.metric("Flagged", flagged)
         c3.metric("Reviewed", len(st.session_state.decided))
-        only_flagged = st.checkbox("Show only flagged claims")
 
-        for i, r in enumerate(results):
+        only_flagged = st.checkbox("Show only flagged claims")
+        by_risk = st.checkbox("Sort by risk (riskiest first)", value=True)
+        order = (sorted(range(len(results)), key=lambda i: -results[i]["risk"])
+                 if by_risk else list(range(len(results))))
+        
+        for i in order:
+            r = results[i]
             if only_flagged and r["status"] == "Supported":
                 continue
             with st.container(border=True):
                 st.markdown(f"{ICON[r['status']]} **{r['status']}** "
-                            f"(confidence {r['confidence']:.2f})")
+                    f"(confidence {r['confidence']:.2f}, risk {r['risk']:.2f})")
                 st.write(r["claim"])
                 st.caption(f"Why: {r['reason']}")
                 st.markdown(f"> **Closest evidence** ({r['source']}): {r['evidence']}")
