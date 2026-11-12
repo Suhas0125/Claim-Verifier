@@ -32,3 +32,7 @@ def test_polarity_flags_opposite():
     r = polarity_check("The auditor issued a qualified opinion",
                        "The auditor's report carried an unqualified opinion.")
     assert r["status"] == "fail"
+
+def test_unit_mismatch_fails():
+    r = check("The market will reach $135.3 million", ["The market will reach $135.3 billion by 2025."])
+    assert r["status"] == "fail"

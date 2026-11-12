@@ -5,6 +5,7 @@ from src.extract import extract_claims
 from src.verify import Verifier, NLI_MODEL
 from src import log
 from src.risk import risk_score
+import tempfile, hashlib
 
 st.set_page_config(page_title="Claim Verifier", layout="wide")
 log.init_db()
@@ -17,6 +18,15 @@ def get_verifier(source_dir):
     return Verifier(load_chunks(source_dir))
 
 
+def save_uploads(files):
+    h = hashlib.md5(b"".join(f.getvalue() for f in files)).hexdigest()[:10]
+    d = Path(tempfile.gettempdir()) / f"cv_{h}"
+    d.mkdir(exist_ok=True)
+    for f in files:
+        (d / f.name).write_bytes(f.getvalue())
+    return str(d)
+
+
 st.title("Claim Verifier")
 st.caption("Checks every claim in an AI-drafted memo against source documents. "
            "The reviewer makes the final call.")
@@ -24,14 +34,25 @@ st.caption("Checks every claim in an AI-drafted memo against source documents. "
 # ---- sidebar ----
 with st.sidebar:
     st.header("Settings")
-    sample = st.selectbox("Sample memo", ["Dev memo", "Held-out memo", "Real document demo", "Paste my own"])
+    sample = st.selectbox("Sample memo", ["Dev memo", "Held-out memo",
+                                          "Real document demo", "Upload my own"])
+    uploaded = []
+    if sample == "Upload my own":
+        uploaded = st.file_uploader("Source documents (PDF or TXT)",
+                                    type=["pdf", "txt"], accept_multiple_files=True)
+        
     mode = st.selectbox("Retrieval", ["hybrid", "dense"])
     use_rules = st.checkbox("Rule checks (numbers, dates, polarity)", value=True)
 
-SRC_DIR = "data/real/sources" if sample == "Real document demo" else "data/sources"
+if sample == "Upload my own":
+    SRC_DIR = save_uploads(uploaded) if uploaded else None
+elif sample == "Real document demo":
+    SRC_DIR = "data/real/sources"
+else:
+    SRC_DIR = "data/sources"
 
-if sample == "Paste my own":
-    memo = st.text_area("Draft memo", height=200)
+if sample == "Upload my own":
+    memo = st.text_area("Paste the draft to check", height=200)
 else:
     path = {"Dev memo": "data/draft_memo.txt",
             "Held-out memo": "data/draft_memo2.txt",
@@ -39,18 +60,22 @@ else:
     memo = Path(path).read_text(encoding="utf-8")
     st.text_area("Draft memo", memo, height=200, disabled=True)
 
+
 tab_review, tab_log = st.tabs(["Review", "Audit log"])
 
 # ---- review ----
 with tab_review:
-    if st.button("Verify draft", type="primary") and memo.strip():
-        v = get_verifier(SRC_DIR)
-        v.mode, v.use_rules = mode, use_rules
-        claims = extract_claims(memo)
-        with st.spinner("Verifying claims..."):
-            res = [v.verify(c["text"]) for c in claims]
-            st.session_state.results = [{**r, "risk": risk_score(r)} for r in res]
-        st.session_state.decided = {}
+    if st.button("Verify draft", type="primary"):
+        if not memo.strip() or SRC_DIR is None:
+            st.warning("Upload source documents and paste a draft first.")
+        else:
+            v = get_verifier(SRC_DIR)
+            v.mode, v.use_rules = mode, use_rules
+            claims = extract_claims(memo)
+            with st.spinner("Verifying claims..."):
+                res = [v.verify(c["text"]) for c in claims]
+                st.session_state.results = [{**r, "risk": risk_score(r)} for r in res]
+            st.session_state.decided = {}
 
     results = st.session_state.get("results") or []
     if results:
